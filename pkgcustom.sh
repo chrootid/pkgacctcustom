@@ -1,5 +1,5 @@
 #!/bin/bash
-# script pelengkap missing account backup
+# script custom pelengkap account backup
 function _init_vars {
         WHMAPI1=$(which whmapi1)
         RSYNC=$(which rsync)
@@ -43,7 +43,7 @@ function _backup_config_get {
         fi
 }
 
-function _do_generate_backup {
+function _backup_compressed {
         "$JQ" -r '.data.acct[].user' "$TMPLISTACCTS"|sort|while read -r CPUSER;do
                 if [[ ! -f "$BACKUPFINALDIR/$CPUSER.tar.gz" ]];then
                         echo "[BACKUP] $CPUSER"
@@ -52,6 +52,44 @@ function _do_generate_backup {
                         echo "[BACKUP] $CPUSER = already exist"
                 fi
         done
+}
+
+function _backup_uncompressed {
+        "$JQ" -r '.data.acct[].user' "$TMPLISTACCTS"|sort|while read -r CPUSER;do
+                if [[ ! -f "$BACKUPFINALDIR/$CPUSER.tar" ]];then
+                        echo "[BACKUP] $CPUSER"
+                        "$PKGACCT" --backup --nocompress "$CPUSER" "$BACKUPFINALDIR" > /dev/null 2>&1
+                elif [[ -f "$BACKUPFINALDIR/$CPUSER.tar" ]];then
+                        echo "[BACKUP] $CPUSER = already exist"
+                fi
+        done
+}
+
+function _backup_incremental {
+        "$JQ" -r '.data.acct[].user' "$TMPLISTACCTS"|sort|while read -r CPUSER;do
+                if [[ ! -d "$BACKUPFINALDIR/$CPUSER" ]];then
+                        echo "[BACKUP] $CPUSER"
+                        "$PKGACCT" --backup --incremental "$CPUSER" "$BACKUPFINALDIR" > /dev/null 2>&1
+                elif [[ -d "$BACKUPFINALDIR/$CPUSER" ]];then
+                        echo "[BACKUP] $CPUSER = already exist"
+                fi
+        done
+}
+
+function _backup_type {
+        BACKUPTYPE=$("$JQ" -r '.data.backup_config.backuptype' "$TMPBACKUPCONFIG");
+        if [[ "$BACKUPTYPE" = "compressed" ]];then
+                _backup_compressed
+        elif [[ "$BACKUPTYPE" = "uncompressed" ]];then
+                _backup_uncompressed
+        elif [[ "$BACKUPTYPE" = "incremental" ]];then
+                _backup_incremental
+        fi
+        
+}
+
+function _do_generate_backup {
+        _backup_type
 
         "$JQ" -r '.data.acct[].user' "$TMPLISTACCTS"|sort|while read -r CPUSER;do
                 echo "[METADATA] $CPUSER"
